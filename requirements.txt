@@ -2,3 +2,4 @@ Flask==2.3.2
 numpy
 opencv-python
 flask-sqlalchemy
+SQLAlchemy==2.0.23
