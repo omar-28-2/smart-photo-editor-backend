@@ -26,6 +26,26 @@ def create_app():
     app.register_blueprint(noise.bp)
     app.register_blueprint(upload.bp)
 
+    @app.route('/')
+    def index():
+        return jsonify({
+            "message": "Welcome to Smart Photo Editor API",
+            "endpoints": {
+                "test_db": "/test-db",
+                "upload": "/upload",
+                "noise": {
+                    "add": "/noise/add",
+                    "remove": "/noise/remove"
+                },
+                "histogram": {
+                    "get": "/histogram/get",
+                    "equalize": "/histogram/equalize"
+                },
+                "filters": "/filters",
+                "image_logs": "/image-logs"
+            }
+        })
+
     @app.route('/test-db')
     def test_db():
         try:
@@ -42,7 +62,11 @@ def create_app():
         if not filename:
             return jsonify({"error": "Filename required"}), 400
 
-        new_log = ImageLog(filename=filename, processed=False)
+        new_log = ImageLog(
+            filename=filename,
+            processed=False,
+            operation="Image added manually"
+        )
         db.session.add(new_log)
         db.session.commit()
 
