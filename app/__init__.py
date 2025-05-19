@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from app.models.db import db
 from app.models.image_log import ImageLog
 from sqlalchemy import text
