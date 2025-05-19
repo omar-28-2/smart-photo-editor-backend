@@ -1,7 +1,6 @@
 import os
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from app.models.db import db
-from app.models.image_log import ImageLog
 from sqlalchemy import text
 
 def create_app():
@@ -34,30 +33,5 @@ def create_app():
             return jsonify({"db_status": "connected", "result": result})
         except Exception as e:
             return jsonify({"db_status": "error", "error": str(e)})
-
-    @app.route('/add-image', methods=['POST'])
-    def add_image():
-        data = request.json
-        filename = data.get('filename')
-        if not filename:
-            return jsonify({"error": "Filename required"}), 400
-
-        new_log = ImageLog(filename=filename, processed=False)
-        db.session.add(new_log)
-        db.session.commit()
-
-        return jsonify({"message": "Image log added", "id": new_log.id}), 201
-
-    @app.route('/image-logs')
-    def get_image_logs():
-        logs = ImageLog.query.all()
-        result = []
-        for log in logs:
-            result.append({
-                "id": log.id,
-                "filename": log.filename,
-                "processed": log.processed
-            })
-        return jsonify(result)
 
     return app
