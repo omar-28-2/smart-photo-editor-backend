@@ -1,7 +1,9 @@
-from flask import Blueprint, request, jsonify
+from flask_restx import Namespace, Resource
 
-bp = Blueprint('mask', __name__, url_prefix='/mask')
+mask_ns = Namespace('mask', description='Mask operations')
 
-@bp.route('/apply', methods=['POST'])
-def apply_mask():
-    return jsonify({"message": "Mask applied (placeholder)"})
+@mask_ns.route('/apply')
+class ApplyMask(Resource):
+    def post(self):
+        
+        return {"message": "Mask applied (placeholder)"}

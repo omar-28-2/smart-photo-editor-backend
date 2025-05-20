@@ -1,8 +1,17 @@
 import os
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from app.models.db import db
 from app.models.image_log import ImageLog
 from sqlalchemy import text
+from flask_restx import Api
+
+# Create global Api instance (Swagger UI available at /docs)
+api = Api(
+    title="Smart Photo Editor API",
+    version="1.0",
+    description="API docs for Smart Photo Editor",
+    doc="/docs"
+)
 
 def create_app():
     app = Flask(__name__, instance_relative_config=True)
@@ -11,22 +20,27 @@ def create_app():
     db_path = os.path.join(app.instance_path, 'photo_editor.db')
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
     os.makedirs(app.instance_path, exist_ok=True)
     db.init_app(app)
 
     with app.app_context():
         db.create_all()
 
-    # Register blueprints
-    from .routes import fft, filters, histogram, mask, noise, upload
-    app.register_blueprint(fft.bp)
-    app.register_blueprint(filters.bp)
-    app.register_blueprint(histogram.bp)
-    app.register_blueprint(mask.bp)
-    app.register_blueprint(noise.bp)
-    app.register_blueprint(upload.bp)
+    # Initialize Flask-RESTX Api with app
+    api.init_app(app)
 
+    # Import your namespaces (RESTX style) from route modules
+    from .routes import fft, filters, histogram, mask, noise, upload
+
+    # Register namespaces with API object, with correct URL prefix
+    api.add_namespace(fft.fft_ns, path='/fft')
+    api.add_namespace(filters.filters_ns, path='/filters')
+    api.add_namespace(histogram.hist_ns, path='/histogram')
+    api.add_namespace(mask.mask_ns, path='/mask')
+    api.add_namespace(noise.noise_ns, path='/noise')
+    api.add_namespace(upload.upload_ns, path='/upload')
+
+    # Keep your existing normal routes as they are
     @app.route('/')
     def index():
         return jsonify({
@@ -90,7 +104,6 @@ def create_app():
             })
         return jsonify(result)
 
-    # Optional: Provide info about fft endpoints
     @app.route('/fft-info')
     def fft_info():
         return jsonify({
