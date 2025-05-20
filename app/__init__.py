@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from app.models.db import db
 from app.models.image_log import ImageLog
 from sqlalchemy import text
@@ -7,17 +7,18 @@ from sqlalchemy import text
 def create_app():
     app = Flask(__name__, instance_relative_config=True)
 
+    # Database config
     db_path = os.path.join(app.instance_path, 'photo_editor.db')
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     os.makedirs(app.instance_path, exist_ok=True)
-
     db.init_app(app)
 
     with app.app_context():
         db.create_all()
 
+    # Register blueprints
     from .routes import fft, filters, histogram, mask, noise, upload
     app.register_blueprint(fft.bp)
     app.register_blueprint(filters.bp)
@@ -42,6 +43,11 @@ def create_app():
                     "equalize": "/histogram/equalize"
                 },
                 "filters": "/filters",
+                "fft": {
+                    "apply": "/fft/apply",
+                    "inverse": "/fft/inverse",
+                    "magnitude": "/fft/magnitude"
+                },
                 "image_logs": "/image-logs"
             }
         })
@@ -83,5 +89,16 @@ def create_app():
                 "processed": log.processed
             })
         return jsonify(result)
+
+    # Optional: Provide info about fft endpoints
+    @app.route('/fft-info')
+    def fft_info():
+        return jsonify({
+            "fft_endpoints": {
+                "apply_fft": "/fft/apply (POST with image file)",
+                "inverse_fft": "/fft/inverse (POST with image file)",
+                "magnitude_spectrum": "/fft/magnitude (POST with image file)"
+            }
+        })
 
     return app
