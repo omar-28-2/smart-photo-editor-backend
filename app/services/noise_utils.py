@@ -6,11 +6,11 @@ from scipy import fftpack
 
 def add_salt_pepper_noise(image, density=0.05):
     noisy = image.copy()
-    # Salt
+    
     num_salt = np.ceil(density * image.size * 0.5)
     coords = [np.random.randint(0, i - 1, int(num_salt)) for i in image.shape]
     noisy[coords[0], coords[1], :] = 255
-    # Pepper
+    
     num_pepper = np.ceil(density * image.size * 0.5)
     coords = [np.random.randint(0, i - 1, int(num_pepper)) for i in image.shape]
     noisy[coords[0], coords[1], :] = 0

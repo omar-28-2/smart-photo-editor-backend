@@ -8,11 +8,11 @@ from app.models.image_log import ImageLog
 
 hist_ns = Namespace('histogram', description='Histogram related operations')
 
-# Parser for file upload (multipart/form-data)
+
 file_upload_parser = reqparse.RequestParser()
 file_upload_parser.add_argument('file', location='files', type='FileStorage', required=True, help='Image file')
 
-# Models for Swagger responses
+
 histogram_model = hist_ns.model('Histogram', {
     'b': fields.List(fields.Float, description='Blue channel histogram'),
     'g': fields.List(fields.Float, description='Green channel histogram'),
@@ -57,7 +57,7 @@ class GetHistogram(Resource):
             for col in histograms:
                 cumulative_histograms[col] = np.cumsum(histograms[col]).tolist()
 
-            # Log the histogram calculation
+            
             new_log = ImageLog(filename=file.filename, processed=True)
             db.session.add(new_log)
             db.session.commit()
