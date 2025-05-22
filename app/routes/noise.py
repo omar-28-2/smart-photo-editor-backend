@@ -14,16 +14,16 @@ import json
 
 noise_ns = Namespace('noise', description='Noise addition and removal operations')
 
-# Model for params (flexible, raw JSON)
+
 params_field = fields.Raw(description='Filter or noise specific parameters')
 
-# Model for add noise request
+
 add_noise_model = noise_ns.model('AddNoise', {
     'type': fields.String(required=True, description='Noise type (salt_pepper, gaussian, periodic)'),
     'params': params_field
 })
 
-# Model for remove noise request
+
 remove_noise_model = noise_ns.model('RemoveNoise', {
     'type': fields.String(required=True, description='Filter type (median, gaussian, bilateral, notch, band_reject)'),
     'params': params_field

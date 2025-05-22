@@ -12,17 +12,16 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Parser for file upload (multipart/form-data)
+
 upload_parser = reqparse.RequestParser()
 upload_parser.add_argument('file', location='files', type='FileStorage', required=True, help='Image file to upload')
 
-# Model for upload response
 upload_response = upload_ns.model('UploadResponse', {
     'message': fields.String,
     'filename': fields.String
 })
 
-# Model for log item
+
 log_item = upload_ns.model('LogItem', {
     'id': fields.Integer,
     'filename': fields.String,
