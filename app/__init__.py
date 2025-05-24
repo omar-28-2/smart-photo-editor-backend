@@ -30,7 +30,7 @@ def create_app():
         
     api.init_app(app)
 
-    from .routes import fft, filters, histogram, mask, noise, upload
+    from .routes import fft, filters, histogram, mask, noise, upload, adjust
 
     api.add_namespace(fft.fft_ns, path='/fft')
     api.add_namespace(filters.filters_ns, path='/filters')
@@ -38,6 +38,7 @@ def create_app():
     api.add_namespace(mask.mask_ns, path='/mask')
     api.add_namespace(noise.noise_ns, path='/noise')
     api.add_namespace(upload.upload_ns, path='/upload')
+    api.add_namespace(adjust.adjust_ns, path='/adjust')
 
     @app.route('/')
     def index():
@@ -59,6 +60,9 @@ def create_app():
                     "apply": "/fft/apply",
                     "inverse": "/fft/inverse",
                     "magnitude": "/fft/magnitude"
+                },
+                "adjust": {
+                    "apply": "/adjust/apply"
                 },
                 "image_logs": "/image-logs"
             }
