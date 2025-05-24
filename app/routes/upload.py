@@ -72,6 +72,38 @@ class UploadLogs(Resource):
         return logs
 
 
+@upload_ns.route('/update/<filename>')
+class UpdateImage(Resource):
+    def post(self, filename):
+        if 'file' not in request.files:
+            return {"error": "No file part"}, 400
+            
+        file = request.files['file']
+        
+        if file.filename == "":
+            return {"error": "No selected file"}, 400
+
+        if file and allowed_file(file.filename):
+            # Read the file content and convert to base64
+            file_content = file.read()
+            image_data = base64.b64encode(file_content).decode('utf-8')
+            
+            # Update existing log entry
+            image_log = ImageLog.query.filter_by(filename=filename).first()
+            if not image_log:
+                return {"error": "Image not found"}, 404
+                
+            image_log.image_data = image_data
+            # Get processed flag from form data, default to True if not provided
+            processed = request.form.get('processed', 'true').lower() == 'true'
+            image_log.processed = processed
+            db.session.commit()
+
+            return {"message": "Image updated successfully"}, 200
+
+        return {"error": "File type not allowed"}, 400
+
+
 @upload_ns.route('/download/<filename>')
 class DownloadImage(Resource):
     def get(self, filename):
