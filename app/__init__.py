@@ -1,9 +1,10 @@
 import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from app.models.db import db
 from app.models.image_log import ImageLog
 from sqlalchemy import text
 from flask_restx import Api
+from flask_cors import CORS
 
 api = Api(
     title="Smart Photo Editor API",
@@ -14,6 +15,9 @@ api = Api(
 
 def create_app():
     app = Flask(__name__, instance_relative_config=True)
+    
+    # Enable CORS
+    CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 
     db_path = os.path.join(app.instance_path, 'photo_editor.db')
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
