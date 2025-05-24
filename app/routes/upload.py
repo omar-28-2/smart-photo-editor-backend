@@ -1,9 +1,11 @@
 import os
-from flask import current_app, request
+from flask import current_app, request, send_file
 from flask_restx import Namespace, Resource, reqparse, fields
 from werkzeug.utils import secure_filename
 from app.models.db import db
 from app.models.image_log import ImageLog
+import base64
+from io import BytesIO
 
 upload_ns = Namespace('upload', description='Image upload operations')
 
@@ -43,12 +45,17 @@ class UploadImage(Resource):
 
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
-            upload_folder = os.path.join(current_app.root_path, "static", "uploads")
-            os.makedirs(upload_folder, exist_ok=True)
-            file_path = os.path.join(upload_folder, filename)
-            file.save(file_path)
-
-            new_log = ImageLog(filename=filename)
+            
+            # Read the file content and convert to base64
+            file_content = file.read()
+            image_data = base64.b64encode(file_content).decode('utf-8')
+            
+            # Create new log entry with image data
+            new_log = ImageLog(
+                filename=filename,
+                processed=False,
+                image_data=image_data
+            )
             db.session.add(new_log)
             db.session.commit()
 
@@ -63,3 +70,44 @@ class UploadLogs(Resource):
     def get(self):
         logs = ImageLog.query.all()
         return logs
+
+
+@upload_ns.route('/download/<filename>')
+class DownloadImage(Resource):
+    def get(self, filename):
+        try:
+            # Check if the image exists in the database
+            image_log = ImageLog.query.filter_by(filename=filename).first()
+            if not image_log:
+                return {"error": "Image not found"}, 404
+
+            # Check if the image has been processed
+            if not image_log.processed:
+                return {"error": "No changes have been made to this image"}, 400
+
+            # Get the image data from the database
+            if not image_log.image_data:
+                return {"error": "Image data not found in database"}, 404
+
+            try:
+                # Convert base64 to bytes
+                image_bytes = base64.b64decode(image_log.image_data)
+            except Exception as e:
+                return {"error": f"Failed to decode image data: {str(e)}"}, 500
+            
+            # Create a BytesIO object
+            image_io = BytesIO(image_bytes)
+            
+            # Determine the mimetype based on the file extension
+            ext = filename.rsplit('.', 1)[1].lower()
+            mimetype = f'image/{ext}' if ext in ['png', 'jpg', 'jpeg', 'gif'] else 'image/png'
+            
+            return send_file(
+                image_io,
+                mimetype=mimetype,
+                as_attachment=True,
+                download_name=filename
+            )
+
+        except Exception as e:
+            return {"error": f"Server error: {str(e)}"}, 500
