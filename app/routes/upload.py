@@ -31,12 +31,13 @@ log_item = upload_ns.model('LogItem', {
 
 @upload_ns.route('/')
 class UploadImage(Resource):
-    @upload_ns.expect(upload_parser)
     @upload_ns.marshal_with(upload_response, code=201)
     def post(self):
-        args = upload_parser.parse_args()
-        file = args.get('file')
-
+        if 'file' not in request.files:
+            upload_ns.abort(400, "No file part")
+            
+        file = request.files['file']
+        
         if file.filename == "":
             upload_ns.abort(400, "No selected file")
 
