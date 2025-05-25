@@ -26,13 +26,24 @@ def add_periodic_noise(image, frequency=20, amplitude=50, pattern='sine'):
     y = np.arange(0, rows)
     X, Y = np.meshgrid(x, y)
     
+    # Create 2D periodic pattern
     if pattern == 'sine':
-        noise = amplitude * np.sin(2 * np.pi * frequency * X / cols)
+        noise = amplitude * (np.sin(2 * np.pi * frequency * X / cols) + 
+                           np.sin(2 * np.pi * frequency * Y / rows)) / 2
     elif pattern == 'cosine':
-        noise = amplitude * np.cos(2 * np.pi * frequency * X / cols)
-    else:
-        noise = amplitude * np.sin(2 * np.pi * frequency * X / cols)
+        noise = amplitude * (np.cos(2 * np.pi * frequency * X / cols) + 
+                           np.cos(2 * np.pi * frequency * Y / rows)) / 2
+    else:  # square wave
+        noise = amplitude * (np.sign(np.sin(2 * np.pi * frequency * X / cols)) + 
+                           np.sign(np.sin(2 * np.pi * frequency * Y / rows))) / 2
     
+    # Ensure noise is in the correct range and type
+    noise = np.clip(noise, -amplitude, amplitude)
     noise = noise.astype(np.uint8)
-    noisy = cv2.add(image, noise[:, :, np.newaxis])
+    
+    # Add noise to each channel
+    noisy = image.copy()
+    for c in range(image.shape[2]):
+        noisy[:, :, c] = cv2.add(image[:, :, c], noise)
+    
     return noisy
