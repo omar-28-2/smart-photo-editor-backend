@@ -39,9 +39,13 @@ class AddNoise(Resource):
             if image is None:
                 return {"error": "No image provided"}, 400
 
-            data = request.json or {}
-            noise_type = data.get('type', 'salt_pepper')
-            params = data.get('params', {})
+            noise_type = request.form.get('type', 'salt_pepper')
+            params_str = request.form.get('params', '{}')
+            
+            try:
+                params = json.loads(params_str)
+            except json.JSONDecodeError:
+                return {"error": "Invalid parameters format"}, 400
 
             if noise_type == 'salt_pepper':
                 noisy = add_salt_pepper_noise(image, params.get('density', 0.05))
@@ -57,15 +61,52 @@ class AddNoise(Resource):
             else:
                 return {"error": "Invalid noise type"}, 400
 
+            # Get the original filename from the request
+            original_filename = request.files['file'].filename
             processed_image_path = save_processed_image(noisy)
 
-            new_log = ImageLog(filename=processed_image_path.split('/')[-1], processed=True)
-            db.session.add(new_log)
-            db.session.commit()
+            print(f"Original filename: {original_filename}")  # Debug log
+
+            # Debug: Print all logs in database
+            all_logs = ImageLog.query.all()
+            print("All logs in database:")
+            for log in all_logs:
+                print(f"  - ID: {log.id}, Filename: {log.filename}, Processed: {log.processed}")
+
+            # Update the existing log entry instead of creating a new one
+            existing_log = ImageLog.query.filter_by(filename=original_filename).first()
+            print(f"Found existing log: {existing_log}")  # Debug log
+
+            if existing_log:
+                print(f"Current processed status: {existing_log.processed}")  # Debug log
+                existing_log.processed = True
+                try:
+                    db.session.commit()
+                    print(f"Updated processed status: {existing_log.processed}")  # Debug log
+                except Exception as e:
+                    print(f"Error committing to database: {str(e)}")  # Debug log
+                    db.session.rollback()
+                    raise e
+            else:
+                print("No existing log found, creating new one")  # Debug log
+                # Create a new log entry with processed=True since we're applying noise
+                new_log = ImageLog(filename=original_filename, processed=True)
+                try:
+                    db.session.add(new_log)
+                    db.session.commit()
+                    print(f"Created new log with processed={new_log.processed}")  # Debug log
+                except Exception as e:
+                    print(f"Error creating new log: {str(e)}")  # Debug log
+                    db.session.rollback()
+                    raise e
+
+            # Verify the update
+            updated_log = ImageLog.query.filter_by(filename=original_filename).first()
+            print(f"Final log state: {updated_log}")  # Debug log
 
             return {
                 "message": f"{noise_type} noise added successfully",
-                "processed_image": processed_image_path
+                "processed_image": original_filename
             }
         except Exception as e:
             return {"error": str(e)}, 500
