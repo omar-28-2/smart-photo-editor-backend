@@ -45,10 +45,13 @@ def save_processed_image(image):
     
     return f"/static/processed/{filename}"
 
-def load_image(file):
+def load_image(filename):
+    # Get the full path to the uploads directory
+    upload_folder = os.path.join(current_app.root_path, "static", "uploads")
+    filepath = os.path.join(upload_folder, filename)
     
-    if os.path.exists(file):
-        return cv2.imread(file)
+    if os.path.exists(filepath):
+        return cv2.imread(filepath)
     return None
 
 def save_image(image, filename):
