@@ -13,37 +13,39 @@ def get_image_from_request(request):
     if file.filename == '':
         return None
     
-   
     nparr = np.frombuffer(file.read(), np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
-   
     if image is not None:
-        filename = file.filename
-        new_log = ImageLog(filename=filename, processed=True)
-        db.session.add(new_log)
-        db.session.commit()
+        # Save the uploaded image first
+        upload_folder = os.path.join(current_app.root_path, "static", "uploads")
+        os.makedirs(upload_folder, exist_ok=True)
+        filepath = os.path.join(upload_folder, file.filename)
+        cv2.imwrite(filepath, image)
+        
+        # Check if a log entry already exists
+        existing_log = ImageLog.query.filter_by(filename=file.filename).first()
+        if not existing_log:
+            # Create a new log entry only if it doesn't exist
+            new_log = ImageLog(filename=file.filename, processed=False)
+            db.session.add(new_log)
+            db.session.commit()
     
     return image
 
 def save_processed_image(image):
-    
-    upload_folder = os.path.join(current_app.root_path, "static", "processed")
+    # Use the same static folder for all images
+    upload_folder = os.path.join(current_app.root_path, "static", "uploads")
     os.makedirs(upload_folder, exist_ok=True)
     
-   
-    filename = f"processed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-    filepath = os.path.join(upload_folder, filename)
-    
+    # Get the original filename from the request
+    original_filename = request.files['file'].filename
+    filepath = os.path.join(upload_folder, original_filename)
     
     cv2.imwrite(filepath, image)
     
-
-    new_log = ImageLog(filename=filename, processed=True)
-    db.session.add(new_log)
-    db.session.commit()
-    
-    return f"/static/processed/{filename}"
+    # Don't create a new log entry here, let the route handle it
+    return original_filename  # Return the original filename
 
 def load_image(filename):
     # Get the full path to the uploads directory
@@ -55,15 +57,16 @@ def load_image(filename):
     return None
 
 def save_image(image, filename):
-   
+    # Use the same static folder for all images
     upload_folder = os.path.join(current_app.root_path, "static", "uploads")
     os.makedirs(upload_folder, exist_ok=True)
     filepath = os.path.join(upload_folder, filename)
     cv2.imwrite(filepath, image)
     
+    # Update the existing log entry
+    existing_log = ImageLog.query.filter_by(filename=filename).first()
+    if existing_log:
+        existing_log.processed = True
+        db.session.commit()
     
-    new_log = ImageLog(filename=filename, processed=True)
-    db.session.add(new_log)
-    db.session.commit()
-    
-    return filepath
+    return filename  # Return just the filename, not the path
