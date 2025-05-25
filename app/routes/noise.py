@@ -120,9 +120,13 @@ class RemoveNoise(Resource):
             if image is None:
                 return {"error": "No image provided"}, 400
 
-            data = request.json or {}
-            filter_type = data.get('type', 'median')
-            params = data.get('params', {})
+            filter_type = request.form.get('type', 'median')
+            params_str = request.form.get('params', '{}')
+            
+            try:
+                params = json.loads(params_str)
+            except json.JSONDecodeError:
+                return {"error": "Invalid parameters format"}, 400
 
             if filter_type == 'median':
                 denoised = apply_median_filter(image, params.get('kernel_size', 3))
@@ -147,15 +151,24 @@ class RemoveNoise(Resource):
             else:
                 return {"error": "Invalid filter type"}, 400
 
+            # Get the original filename from the request
+            original_filename = request.files['file'].filename
             processed_image_path = save_processed_image(denoised)
 
-            new_log = ImageLog(filename=processed_image_path.split('/')[-1], processed=True)
-            db.session.add(new_log)
-            db.session.commit()
+            # Update the existing log entry instead of creating a new one
+            existing_log = ImageLog.query.filter_by(filename=original_filename).first()
+            if existing_log:
+                existing_log.processed = True
+                db.session.commit()
+            else:
+                # If no existing log found (shouldn't happen), create a new one
+                new_log = ImageLog(filename=original_filename, processed=True)
+                db.session.add(new_log)
+                db.session.commit()
 
             return {
                 "message": f"Noise removed using {filter_type} filter successfully",
-                "processed_image": processed_image_path
+                "processed_image": original_filename
             }
         except Exception as e:
             return {"error": str(e)}, 500
