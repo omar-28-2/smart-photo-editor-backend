@@ -15,9 +15,7 @@ file_upload_parser.add_argument('file', location='files', type='FileStorage', re
 file_upload_parser.add_argument('filename', type=str, required=False, help='Image filename')
 
 histogram_model = hist_ns.model('Histogram', {
-    'b': fields.List(fields.Float, description='Blue channel histogram'),
-    'g': fields.List(fields.Float, description='Green channel histogram'),
-    'r': fields.List(fields.Float, description='Red channel histogram'),
+    'gray': fields.List(fields.Float, description='Grayscale histogram')
 })
 
 histogram_response_model = hist_ns.model('HistogramResponse', {
@@ -58,20 +56,16 @@ class GetHistogram(Resource):
                 return {"error": "Image file not found"}, 404
 
             # Load and process the image
-            image = cv2.imread(filepath)
+            image = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)  # Load as grayscale
             if image is None:
                 current_app.logger.error("Failed to load image")
                 return {"error": "Failed to load image"}, 400
 
             # Calculate histograms
-            histograms = {}
-            for i, col in enumerate(['b', 'g', 'r']):
-                hist = cv2.calcHist([image], [i], None, [256], [0, 256])
-                histograms[col] = hist.flatten().tolist()
+            hist = cv2.calcHist([image], [0], None, [256], [0, 256])
+            histograms = {'gray': hist.flatten().tolist()}
 
-            cumulative_histograms = {}
-            for col in histograms:
-                cumulative_histograms[col] = np.cumsum(histograms[col]).tolist()
+            cumulative_histograms = {'gray': np.cumsum(hist.flatten()).tolist()}
 
             return {
                 "histograms": histograms,
@@ -106,33 +100,23 @@ class EqualizeHistogram(Resource):
                 return {"error": "Image file not found"}, 404
 
             # Load and process the image
-            image = cv2.imread(filepath)
+            image = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
             if image is None:
                 current_app.logger.error("Failed to load image")
                 return {"error": "Failed to load image"}, 400
 
-            # Apply histogram equalization
-            lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-            l, a, b = cv2.split(lab)
-
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-            cl = clahe.apply(l)
-
-            merged = cv2.merge((cl, a, b))
-            equalized = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
+            # Apply CLAHE equalization
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            equalized = clahe.apply(image)
 
             # Calculate histograms
-            original_histograms = {}
-            equalized_histograms = {}
+            original_hist = cv2.calcHist([image], [0], None, [256], [0, 256])
+            equalized_hist = cv2.calcHist([equalized], [0], None, [256], [0, 256])
 
-            for i, col in enumerate(['b', 'g', 'r']):
-                hist = cv2.calcHist([image], [i], None, [256], [0, 256])
-                original_histograms[col] = hist.flatten().tolist()
+            original_histograms = {'gray': original_hist.flatten().tolist()}
+            equalized_histograms = {'gray': equalized_hist.flatten().tolist()}
 
-                hist = cv2.calcHist([equalized], [i], None, [256], [0, 256])
-                equalized_histograms[col] = hist.flatten().tolist()
-
-            # Save processed images
+            # Save original and equalized images
             original_path = save_processed_image(image)
             equalized_path = save_processed_image(equalized)
 

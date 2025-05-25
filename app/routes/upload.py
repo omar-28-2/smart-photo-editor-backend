@@ -46,6 +46,14 @@ class UploadImage(Resource):
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             
+            # Create uploads directory if it doesn't exist
+            upload_folder = os.path.join(current_app.root_path, "static", "uploads")
+            os.makedirs(upload_folder, exist_ok=True)
+            
+            # Save the file to the filesystem
+            filepath = os.path.join(upload_folder, filename)
+            file.save(filepath)
+            
             # Read the file content and convert to base64
             file_content = file.read()
             image_data = base64.b64encode(file_content).decode('utf-8')
