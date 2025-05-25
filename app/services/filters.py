@@ -98,56 +98,106 @@ def apply_emboss_filter(image, direction='north'):
     return filtered
 
 def apply_notch_filter(image, points=None):
+    # Convert to grayscale if needed
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
     
-    f = fftpack.fft2(image)
+    # Apply FFT
+    f = fftpack.fft2(gray)
     fshift = fftpack.fftshift(f)
     
-    rows, cols = image.shape[:2]
+    rows, cols = gray.shape
     crow, ccol = rows//2, cols//2
     
-    mask = np.ones((rows, cols), np.uint8)
+    # Create notch filter mask
+    mask = np.ones((rows, cols), np.float32)
     
     if points:
-        
+        # Create notches at specified points
         for x, y in points:
-            mask[crow-y:crow+y, ccol-x:ccol+x] = 0
+            # Convert relative coordinates (-1 to 1) to image coordinates
+            x_coord = int(ccol + (x * ccol))
+            y_coord = int(crow - (y * crow))  # Invert y coordinate
+            
+            # Create a small circular notch
+            r = 5  # Radius of the notch
+            y_coords, x_coords = np.ogrid[:rows, :cols]
+            dist_from_point = np.sqrt((x_coords - x_coord)**2 + (y_coords - y_coord)**2)
+            mask[dist_from_point < r] = 0
+            
+            # Also create a notch at the symmetric point
+            x_sym = int(ccol - (x * ccol))
+            y_sym = int(crow + (y * crow))
+            dist_from_symmetric = np.sqrt((x_coords - x_sym)**2 + (y_coords - y_sym)**2)
+            mask[dist_from_symmetric < r] = 0
     else:
-        
-        r = 30
-        center = [crow, ccol]
-        x, y = np.ogrid[:rows, :cols]
-        mask_area = (x - center[0])**2 + (y - center[1])**2 <= r*r
-        mask[mask_area] = 0
+        # Default behavior: remove DC component
+        r = 5
+        y_coords, x_coords = np.ogrid[:rows, :cols]
+        dist_from_center = np.sqrt((x_coords - ccol)**2 + (y_coords - crow)**2)
+        mask[dist_from_center < r] = 0
     
+    # Apply the mask
+    fshift = fshift * mask
     
-    fshift = fshift * mask[:, :, np.newaxis]
-    
+    # Inverse FFT
     f_ishift = fftpack.ifftshift(fshift)
     img_back = fftpack.ifft2(f_ishift)
     img_back = np.abs(img_back)
     
-    return img_back.astype(np.uint8)
+    # Normalize the result
+    img_back = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    
+    # Convert back to BGR if needed
+    if len(image.shape) == 3:
+        img_back = cv2.cvtColor(img_back, cv2.COLOR_GRAY2BGR)
+    
+    return img_back
 
 def apply_band_reject_filter(image, cutoff_freq=30, width=10):
+    # Convert to grayscale if needed
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
     
-    f = fftpack.fft2(image)
+    # Apply FFT
+    f = fftpack.fft2(gray)
     fshift = fftpack.fftshift(f)
     
-    rows, cols = image.shape[:2]
+    rows, cols = gray.shape
     crow, ccol = rows//2, cols//2
     
-    
-    mask = np.ones((rows, cols), np.uint8)
+    # Create band reject mask
+    mask = np.ones((rows, cols), np.float32)
     r = cutoff_freq
+    w = width
+    
+    # Create a more sophisticated band reject mask
+    y, x = np.ogrid[:rows, :cols]
     center = [crow, ccol]
-    x, y = np.ogrid[:rows, :cols]
-    mask_area = (x - center[0])**2 + (y - center[1])**2 <= r*r
-    mask[mask_area] = 0
     
-    fshift = fshift * mask[:, :, np.newaxis]
+    # Create a band reject mask that removes frequencies in a ring
+    dist_from_center = np.sqrt((x - center[1])**2 + (y - center[0])**2)
+    mask = np.ones_like(dist_from_center)
+    mask[dist_from_center < r - w/2] = 0
+    mask[dist_from_center > r + w/2] = 0
     
+    # Apply the mask
+    fshift = fshift * mask
+    
+    # Inverse FFT
     f_ishift = fftpack.ifftshift(fshift)
     img_back = fftpack.ifft2(f_ishift)
     img_back = np.abs(img_back)
     
-    return img_back.astype(np.uint8)
+    # Normalize the result
+    img_back = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    
+    # Convert back to BGR if needed
+    if len(image.shape) == 3:
+        img_back = cv2.cvtColor(img_back, cv2.COLOR_GRAY2BGR)
+    
+    return img_back
