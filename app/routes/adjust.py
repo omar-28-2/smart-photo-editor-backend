@@ -53,13 +53,23 @@ class ApplyAdjustments(Resource):
 
             processed_image_path = save_processed_image(adjusted)
 
-            new_log = ImageLog(filename=processed_image_path.split('/')[-1], processed=True)
-            db.session.add(new_log)
-            db.session.commit()
+            # Get the original filename from the request
+            original_filename = request.files['file'].filename
+
+            # Update the existing log entry instead of creating a new one
+            existing_log = ImageLog.query.filter_by(filename=original_filename).first()
+            if existing_log:
+                existing_log.processed = True
+                db.session.commit()
+            else:
+                # If no existing log found (shouldn't happen), create a new one
+                new_log = ImageLog(filename=original_filename, processed=True)
+                db.session.add(new_log)
+                db.session.commit()
 
             return {
                 "message": "Adjustments applied successfully",
-                "processed_image": processed_image_path
+                "processed_image": original_filename
             }
 
         except Exception as e:

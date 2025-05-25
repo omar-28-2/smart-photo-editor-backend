@@ -1,5 +1,5 @@
 from flask_restx import Namespace, Resource, fields, reqparse
-from flask import request
+from flask import request, current_app
 from app.services.image_io import get_image_from_request, save_processed_image
 from app.services.noise_utils import (
     add_salt_pepper_noise, add_gaussian_noise, add_periodic_noise
@@ -11,6 +11,9 @@ from app.services.filters import (
 from app.models.db import db
 from app.models.image_log import ImageLog
 import json
+import os
+import numpy as np
+import cv2
 
 noise_ns = Namespace('noise', description='Noise addition and removal operations')
 
@@ -39,9 +42,13 @@ class AddNoise(Resource):
             if image is None:
                 return {"error": "No image provided"}, 400
 
-            data = request.json or {}
-            noise_type = data.get('type', 'salt_pepper')
-            params = data.get('params', {})
+            noise_type = request.form.get('type', 'salt_pepper')
+            params_str = request.form.get('params', '{}')
+            
+            try:
+                params = json.loads(params_str)
+            except json.JSONDecodeError:
+                return {"error": "Invalid parameters format"}, 400
 
             if noise_type == 'salt_pepper':
                 noisy = add_salt_pepper_noise(image, params.get('density', 0.05))
@@ -57,64 +64,113 @@ class AddNoise(Resource):
             else:
                 return {"error": "Invalid noise type"}, 400
 
+            # Get the original filename from the request
+            original_filename = request.files['file'].filename
             processed_image_path = save_processed_image(noisy)
 
-            new_log = ImageLog(filename=processed_image_path.split('/')[-1], processed=True)
-            db.session.add(new_log)
-            db.session.commit()
+            print(f"Original filename: {original_filename}")  # Debug log
+
+            # Debug: Print all logs in database
+            all_logs = ImageLog.query.all()
+            print("All logs in database:")
+            for log in all_logs:
+                print(f"  - ID: {log.id}, Filename: {log.filename}, Processed: {log.processed}")
+
+            # Update the existing log entry instead of creating a new one
+            existing_log = ImageLog.query.filter_by(filename=original_filename).first()
+            print(f"Found existing log: {existing_log}")  # Debug log
+
+            if existing_log:
+                print(f"Current processed status: {existing_log.processed}")  # Debug log
+                existing_log.processed = True
+                try:
+                    db.session.commit()
+                    print(f"Updated processed status: {existing_log.processed}")  # Debug log
+                except Exception as e:
+                    print(f"Error committing to database: {str(e)}")  # Debug log
+                    db.session.rollback()
+                    raise e
+            else:
+                print("No existing log found, creating new one")  # Debug log
+                # Create a new log entry with processed=True since we're applying noise
+                new_log = ImageLog(filename=original_filename, processed=True)
+                try:
+                    db.session.add(new_log)
+                    db.session.commit()
+                    print(f"Created new log with processed={new_log.processed}")  # Debug log
+                except Exception as e:
+                    print(f"Error creating new log: {str(e)}")  # Debug log
+                    db.session.rollback()
+                    raise e
+
+            # Verify the update
+            updated_log = ImageLog.query.filter_by(filename=original_filename).first()
+            print(f"Final log state: {updated_log}")  # Debug log
 
             return {
                 "message": f"{noise_type} noise added successfully",
-                "processed_image": processed_image_path
+                "processed_image": original_filename
             }
         except Exception as e:
             return {"error": str(e)}, 500
 
 @noise_ns.route('/remove')
 class RemoveNoise(Resource):
-    @noise_ns.expect(remove_noise_model)
     def post(self):
+        if 'file' not in request.files:
+            return {'error': 'No file provided'}, 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return {'error': 'No file selected'}, 400
+        
+        filter_type = request.form.get('type')
+        params_str = request.form.get('params', '{}')
+        
         try:
-            image = get_image_from_request(request)
-            if image is None:
-                return {"error": "No image provided"}, 400
-
-            data = request.json or {}
-            filter_type = data.get('type', 'median')
-            params = data.get('params', {})
-
+            params = json.loads(params_str)
+        except json.JSONDecodeError:
+            return {'error': 'Invalid parameters format'}, 400
+        
+        try:
+            # Read the image
+            img_array = np.frombuffer(file.read(), np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            
+            if img is None:
+                return {'error': 'Invalid image format'}, 400
+            
+            # Apply the selected filter
             if filter_type == 'median':
-                denoised = apply_median_filter(image, params.get('kernel_size', 3))
-            elif filter_type == 'gaussian':
-                denoised = apply_gaussian_filter(image, params.get('kernel_size', 5), params.get('sigma', 0))
-            elif filter_type == 'bilateral':
-                denoised = apply_bilateral_filter(
-                    image,
-                    params.get('d', 9),
-                    params.get('sigma_color', 75),
-                    params.get('sigma_space', 75)
-                )
+                kernel_size = params.get('kernel_size', 3)
+                filtered_img = apply_median_filter(img, kernel_size)
             elif filter_type == 'notch':
-                points = params.get('points', None)
-                denoised = apply_notch_filter(image, points)
+                points = params.get('points', [])
+                # Convert points to list of tuples if they exist
+                if points:
+                    points = [(float(p['x']), float(p['y'])) for p in points]
+                filtered_img = apply_notch_filter(img, points)
             elif filter_type == 'band_reject':
-                denoised = apply_band_reject_filter(
-                    image,
-                    params.get('cutoff_freq', 30),
-                    params.get('width', 10)
-                )
+                cutoff_freq = params.get('cutoff_freq', 30)
+                width = params.get('width', 10)
+                filtered_img = apply_band_reject_filter(img, cutoff_freq, width)
             else:
-                return {"error": "Invalid filter type"}, 400
-
-            processed_image_path = save_processed_image(denoised)
-
-            new_log = ImageLog(filename=processed_image_path.split('/')[-1], processed=True)
-            db.session.add(new_log)
-            db.session.commit()
-
+                return {'error': 'Invalid filter type'}, 400
+            
+            # Save the processed image using the utility function
+            processed_filename = save_processed_image(filtered_img)
+            
+            # Update the log entry
+            log_entry = ImageLog.query.filter_by(filename=file.filename).first()
+            if log_entry:
+                log_entry.processed = True
+                db.session.commit()
+            
             return {
-                "message": f"Noise removed using {filter_type} filter successfully",
-                "processed_image": processed_image_path
+                'message': 'Noise removed successfully',
+                'processed_image': processed_filename
             }
+            
         except Exception as e:
-            return {"error": str(e)}, 500
+            print(f"Error in RemoveNoise: {str(e)}")
+            return {'error': str(e)}, 500

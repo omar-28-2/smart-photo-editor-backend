@@ -22,14 +22,6 @@ def get_image_from_request(request):
         os.makedirs(upload_folder, exist_ok=True)
         filepath = os.path.join(upload_folder, file.filename)
         cv2.imwrite(filepath, image)
-        
-        # Check if a log entry already exists
-        existing_log = ImageLog.query.filter_by(filename=file.filename).first()
-        if not existing_log:
-            # Create a new log entry only if it doesn't exist
-            new_log = ImageLog(filename=file.filename, processed=False)
-            db.session.add(new_log)
-            db.session.commit()
     
     return image
 
@@ -42,9 +34,9 @@ def save_processed_image(image):
     original_filename = request.files['file'].filename
     filepath = os.path.join(upload_folder, original_filename)
     
+    # Save the processed image with the same filename
     cv2.imwrite(filepath, image)
     
-    # Don't create a new log entry here, let the route handle it
     return original_filename  # Return the original filename
 
 def load_image(filename):
