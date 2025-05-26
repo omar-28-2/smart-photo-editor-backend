@@ -49,16 +49,16 @@ def load_image(filename):
     return None
 
 def save_image(image, filename):
-    # Use the same static folder for all images
+    
     upload_folder = os.path.join(current_app.root_path, "static", "uploads")
     os.makedirs(upload_folder, exist_ok=True)
     filepath = os.path.join(upload_folder, filename)
     cv2.imwrite(filepath, image)
     
-    # Update the existing log entry
+    
     existing_log = ImageLog.query.filter_by(filename=filename).first()
     if existing_log:
         existing_log.processed = True
         db.session.commit()
     
-    return filename  # Return just the filename, not the path
+    return filename  

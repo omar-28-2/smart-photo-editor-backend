@@ -6,7 +6,7 @@ from app.services.noise_utils import (
 )
 from app.services.filters import (
     apply_median_filter, apply_gaussian_filter, apply_bilateral_filter,
-    apply_notch_filter, apply_band_reject_filter
+    apply_notch_filter, apply_band_reject_filter, remove_periodic_noise
 )
 from app.models.db import db
 from app.models.image_log import ImageLog
@@ -144,21 +144,35 @@ class RemoveNoise(Resource):
             if filter_type == 'median':
                 kernel_size = params.get('kernel_size', 3)
                 filtered_img = apply_median_filter(img, kernel_size)
+                fft_vis = None
             elif filter_type == 'notch':
                 points = params.get('points', [])
                 # Convert points to list of tuples if they exist
                 if points:
                     points = [(float(p['x']), float(p['y'])) for p in points]
                 filtered_img = apply_notch_filter(img, points)
+                fft_vis = None
             elif filter_type == 'band_reject':
                 cutoff_freq = params.get('cutoff_freq', 30)
                 width = params.get('width', 10)
                 filtered_img = apply_band_reject_filter(img, cutoff_freq, width)
+                fft_vis = None
+            elif filter_type == 'periodic':
+                frequency = params.get('frequency', 20)
+                bandwidth = params.get('bandwidth', 5)
+                filtered_img, fft_vis = remove_periodic_noise(img, frequency, bandwidth)
             else:
                 return {'error': 'Invalid filter type'}, 400
             
-            # Save the processed image using the utility function
+            # Save the processed image
             processed_filename = save_processed_image(filtered_img)
+            
+            # Save FFT visualization if available
+            fft_vis_filename = None
+            if fft_vis is not None:
+                fft_vis_filename = f"fft_vis_{processed_filename}"
+                upload_folder = os.path.join(current_app.root_path, "static", "uploads")
+                cv2.imwrite(os.path.join(upload_folder, fft_vis_filename), fft_vis)
             
             # Update the log entry
             log_entry = ImageLog.query.filter_by(filename=file.filename).first()
@@ -166,10 +180,15 @@ class RemoveNoise(Resource):
                 log_entry.processed = True
                 db.session.commit()
             
-            return {
+            response_data = {
                 'message': 'Noise removed successfully',
                 'processed_image': processed_filename
             }
+            
+            if fft_vis_filename:
+                response_data['fft_visualization'] = fft_vis_filename
+            
+            return response_data
             
         except Exception as e:
             print(f"Error in RemoveNoise: {str(e)}")
