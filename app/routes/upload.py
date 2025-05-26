@@ -121,13 +121,21 @@ class DownloadImage(Resource):
             if not image_log:
                 return {"error": "Image not found"}, 404
 
-            # Check if the image has been processed
-            if not image_log.processed:
-                return {"error": "No changes have been made to this image"}, 400
-
-            # Get the image data from the database
+            # Get the processed image path
+            upload_folder = os.path.join(current_app.root_path, "static", "uploads")
+            image_path = os.path.join(upload_folder, filename)
+            
+            # If the file exists in uploads folder (processed image), send that
+            if os.path.exists(image_path):
+                return send_file(
+                    image_path,
+                    as_attachment=True,
+                    download_name=filename
+                )
+            
+            # If no processed file exists, check the database
             if not image_log.image_data:
-                return {"error": "Image data not found in database"}, 404
+                return {"error": "Image data not found"}, 404
 
             try:
                 # Convert base64 to bytes

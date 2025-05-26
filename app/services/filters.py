@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from scipy import fftpack
-
+from app.services.fft_utils import apply_fft, apply_ifft, magnitude_spectrum
 
 
 def apply_sobel_filter(image, direction='both', kernel_size=3):
@@ -33,13 +33,9 @@ def apply_laplace_filter(image, kernel_size=3):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     else:
         gray = image.copy()
-
-    
+        
     filtered = cv2.Laplacian(gray, cv2.CV_64F, ksize=kernel_size)
-    
-   
     filtered = cv2.normalize(filtered, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    
     
     if len(image.shape) == 3:
         filtered = cv2.cvtColor(filtered, cv2.COLOR_GRAY2BGR)
@@ -98,106 +94,151 @@ def apply_emboss_filter(image, direction='north'):
     return filtered
 
 def apply_notch_filter(image, points=None):
-    # Convert to grayscale if needed
+    
     if len(image.shape) == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     else:
         gray = image.copy()
     
-    # Apply FFT
-    f = fftpack.fft2(gray)
-    fshift = fftpack.fftshift(f)
+    
+    fshift = apply_fft(gray)
     
     rows, cols = gray.shape
     crow, ccol = rows//2, cols//2
     
-    # Create notch filter mask
     mask = np.ones((rows, cols), np.float32)
     
     if points:
-        # Create notches at specified points
+        
         for x, y in points:
-            # Convert relative coordinates (-1 to 1) to image coordinates
-            x_coord = int(ccol + (x * ccol))
-            y_coord = int(crow - (y * crow))  # Invert y coordinate
             
-            # Create a small circular notch
-            r = 5  # Radius of the notch
+            x_coord = int(ccol + (x * ccol))
+            y_coord = int(crow - (y * crow))  
+            
+            r = 5  
             y_coords, x_coords = np.ogrid[:rows, :cols]
             dist_from_point = np.sqrt((x_coords - x_coord)**2 + (y_coords - y_coord)**2)
             mask[dist_from_point < r] = 0
             
-            # Also create a notch at the symmetric point
             x_sym = int(ccol - (x * ccol))
             y_sym = int(crow + (y * crow))
             dist_from_symmetric = np.sqrt((x_coords - x_sym)**2 + (y_coords - y_sym)**2)
             mask[dist_from_symmetric < r] = 0
     else:
-        # Default behavior: remove DC component
+        
         r = 5
         y_coords, x_coords = np.ogrid[:rows, :cols]
         dist_from_center = np.sqrt((x_coords - ccol)**2 + (y_coords - crow)**2)
         mask[dist_from_center < r] = 0
     
-    # Apply the mask
     fshift = fshift * mask
     
-    # Inverse FFT
-    f_ishift = fftpack.ifftshift(fshift)
-    img_back = fftpack.ifft2(f_ishift)
+    f_ishift = apply_ifft(fshift)
+    img_back = apply_ifft(f_ishift)
     img_back = np.abs(img_back)
     
-    # Normalize the result
     img_back = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     
-    # Convert back to BGR if needed
+
     if len(image.shape) == 3:
         img_back = cv2.cvtColor(img_back, cv2.COLOR_GRAY2BGR)
     
     return img_back
 
 def apply_band_reject_filter(image, cutoff_freq=30, width=10):
-    # Convert to grayscale if needed
+    
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+    
+    
+    fshift = apply_fft(gray)
+    
+    rows, cols = gray.shape
+    crow, ccol = rows//2, cols//2
+    
+    mask = np.ones((rows, cols), np.float32)
+    r = cutoff_freq
+    w = width
+    
+
+    y, x = np.ogrid[:rows, :cols]
+    center = [crow, ccol]
+    
+    dist_from_center = np.sqrt((x - center[1])**2 + (y - center[0])**2)
+    mask = np.ones_like(dist_from_center)
+    mask[dist_from_center < r - w/2] = 0
+    mask[dist_from_center > r + w/2] = 0
+    
+    fshift = fshift * mask
+    
+    f_ishift = apply_ifft(fshift)
+    img_back = apply_ifft(f_ishift)
+    img_back = np.abs(img_back)
+    
+    img_back = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    
+    if len(image.shape) == 3:
+        img_back = cv2.cvtColor(img_back, cv2.COLOR_GRAY2BGR)
+    
+    return img_back
+
+def remove_periodic_noise(image, frequency=20, bandwidth=5):
+    
     if len(image.shape) == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     else:
         gray = image.copy()
     
     # Apply FFT
-    f = fftpack.fft2(gray)
-    fshift = fftpack.fftshift(f)
+    fshift = apply_fft(gray)
     
+    # Get magnitude spectrum for visualization
+    magnitude_spectrum = magnitude_spectrum(fshift)
+    magnitude_spectrum_norm = cv2.normalize(magnitude_spectrum, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    
+    # Get image dimensions and center
     rows, cols = gray.shape
     crow, ccol = rows//2, cols//2
     
-    # Create band reject mask
+    # Create mask for periodic noise
     mask = np.ones((rows, cols), np.float32)
-    r = cutoff_freq
-    w = width
-    
-    # Create a more sophisticated band reject mask
     y, x = np.ogrid[:rows, :cols]
-    center = [crow, ccol]
     
-    # Create a band reject mask that removes frequencies in a ring
-    dist_from_center = np.sqrt((x - center[1])**2 + (y - center[0])**2)
-    mask = np.ones_like(dist_from_center)
-    mask[dist_from_center < r - w/2] = 0
-    mask[dist_from_center > r + w/2] = 0
+    # Convert frequency to pixel distance in frequency domain
+    # The higher the frequency, the further from center in FFT
+    freq_radius = (frequency * min(rows, cols)) / 100  # Convert frequency to radius
     
-    # Apply the mask
-    fshift = fshift * mask
+    # Create circular masks at the noise frequency locations
+    # We look in horizontal and vertical directions from the center
+    for angle in [0, 90, 180, 270]:  # Look in all four directions
+        angle_rad = np.deg2rad(angle)
+        center_x = int(ccol + freq_radius * np.cos(angle_rad))
+        center_y = int(crow + freq_radius * np.sin(angle_rad))
+        
+        # Calculate distance from this point
+        dist = np.sqrt((x - center_x)**2 + (y - center_y)**2)
+        # Create smooth transition in the mask using Gaussian
+        mask_component = 1 - np.exp(-(dist**2)/(2 * bandwidth**2))
+        mask = mask * mask_component
+    
+    # Ensure mask values are in [0, 1]
+    mask = np.clip(mask, 0, 1)
+    
+    # Apply mask to FFT
+    fshift_filtered = fshift * mask
     
     # Inverse FFT
-    f_ishift = fftpack.ifftshift(fshift)
-    img_back = fftpack.ifft2(f_ishift)
+    f_ishift = apply_ifft(fshift_filtered)
+    img_back = apply_ifft(f_ishift)
     img_back = np.abs(img_back)
     
-    # Normalize the result
+    # Normalize and convert back to uint8
     img_back = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     
-    # Convert back to BGR if needed
+    # Convert back to color if input was color
     if len(image.shape) == 3:
         img_back = cv2.cvtColor(img_back, cv2.COLOR_GRAY2BGR)
     
-    return img_back
+    return img_back, magnitude_spectrum_norm  

@@ -25,25 +25,31 @@ def add_periodic_noise(image, frequency=20, amplitude=50, pattern='sine'):
     x = np.arange(0, cols)
     y = np.arange(0, rows)
     X, Y = np.meshgrid(x, y)
-    
-    # Create 2D periodic pattern
+
+    # Generate noise pattern
     if pattern == 'sine':
-        noise = amplitude * (np.sin(2 * np.pi * frequency * X / cols) + 
-                           np.sin(2 * np.pi * frequency * Y / rows)) / 2
+        noise = (np.sin(2 * np.pi * frequency * X / cols) +
+                 np.sin(2 * np.pi * frequency * Y / rows)) / 2
     elif pattern == 'cosine':
-        noise = amplitude * (np.cos(2 * np.pi * frequency * X / cols) + 
-                           np.cos(2 * np.pi * frequency * Y / rows)) / 2
-    else:  # square wave
-        noise = amplitude * (np.sign(np.sin(2 * np.pi * frequency * X / cols)) + 
-                           np.sign(np.sin(2 * np.pi * frequency * Y / rows))) / 2
-    
-    # Ensure noise is in the correct range and type
-    noise = np.clip(noise, -amplitude, amplitude)
-    noise = noise.astype(np.uint8)
-    
-    # Add noise to each channel
-    noisy = image.copy()
-    for c in range(image.shape[2]):
-        noisy[:, :, c] = cv2.add(image[:, :, c], noise)
-    
+        noise = (np.cos(2 * np.pi * frequency * X / cols) +
+                 np.cos(2 * np.pi * frequency * Y / rows)) / 2
+    elif pattern == 'square':
+        noise = (np.sign(np.sin(2 * np.pi * frequency * X / cols)) +
+                 np.sign(np.sin(2 * np.pi * frequency * Y / rows))) / 2
+    else:
+        raise ValueError("Unsupported pattern type")
+
+    # Normalize and scale
+    noise = noise / np.max(np.abs(noise))
+    noise = noise * amplitude
+
+    # Add noise
+    if len(image.shape) == 2:
+        noisy = np.clip(image.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+    else:
+        noisy = image.copy().astype(np.float32)
+        for c in range(image.shape[2]):
+            noisy[:, :, c] = np.clip(image[:, :, c] + noise, 0, 255)
+        noisy = noisy.astype(np.uint8)
+
     return noisy
