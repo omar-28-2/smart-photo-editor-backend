@@ -87,7 +87,8 @@ class ApplyFilter(Resource):
             else:
                 return {"error": "Invalid filter type"}, 400
 
-            processed_image_path = save_processed_image(filtered)
+            # Save the filtered image with a unique filename
+            processed_image_filename = save_processed_image(filtered)
 
             # Get the original filename from the request
             original_filename = request.files['file'].filename
@@ -105,7 +106,7 @@ class ApplyFilter(Resource):
 
             return {
                 "message": f"{filter_type} filter applied successfully",
-                "processed_image": original_filename
+                "processed_image": processed_image_filename  # Return the new filename
             }
 
         except Exception as e:
