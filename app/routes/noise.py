@@ -66,50 +66,24 @@ class AddNoise(Resource):
 
             # Get the original filename from the request
             original_filename = request.files['file'].filename
-            processed_image_path = save_processed_image(noisy)
-
-            print(f"Original filename: {original_filename}")  # Debug log
-
-            # Debug: Print all logs in database
-            all_logs = ImageLog.query.all()
-            print("All logs in database:")
-            for log in all_logs:
-                print(f"  - ID: {log.id}, Filename: {log.filename}, Processed: {log.processed}")
+            
+            # Save the noisy image with a unique filename
+            processed_image_filename = save_processed_image(noisy)
 
             # Update the existing log entry instead of creating a new one
             existing_log = ImageLog.query.filter_by(filename=original_filename).first()
-            print(f"Found existing log: {existing_log}")  # Debug log
-
             if existing_log:
-                print(f"Current processed status: {existing_log.processed}")  # Debug log
                 existing_log.processed = True
-                try:
-                    db.session.commit()
-                    print(f"Updated processed status: {existing_log.processed}")  # Debug log
-                except Exception as e:
-                    print(f"Error committing to database: {str(e)}")  # Debug log
-                    db.session.rollback()
-                    raise e
+                db.session.commit()
             else:
-                print("No existing log found, creating new one")  # Debug log
                 # Create a new log entry with processed=True since we're applying noise
                 new_log = ImageLog(filename=original_filename, processed=True)
-                try:
-                    db.session.add(new_log)
-                    db.session.commit()
-                    print(f"Created new log with processed={new_log.processed}")  # Debug log
-                except Exception as e:
-                    print(f"Error creating new log: {str(e)}")  # Debug log
-                    db.session.rollback()
-                    raise e
-
-            # Verify the update
-            updated_log = ImageLog.query.filter_by(filename=original_filename).first()
-            print(f"Final log state: {updated_log}")  # Debug log
+                db.session.add(new_log)
+                db.session.commit()
 
             return {
                 "message": f"{noise_type} noise added successfully",
-                "processed_image": original_filename
+                "processed_image": processed_image_filename  # Return the new filename
             }
         except Exception as e:
             return {"error": str(e)}, 500
