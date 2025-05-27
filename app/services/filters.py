@@ -94,56 +94,83 @@ def apply_emboss_filter(image, direction='north'):
     return filtered
 
 def apply_notch_filter(image, points=None):
+    """
+    Apply a notch filter to remove periodic noise from an image.
     
+    Args:
+        image: Input image (grayscale or color)
+        points: List of (x,y) coordinates in normalized [-1,1] range indicating noise frequencies
+    
+    Returns:
+        Filtered image and magnitude spectrum for visualization
+    """
     if len(image.shape) == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     else:
         gray = image.copy()
     
-    
+    # Apply FFT
     fshift = apply_fft(gray)
     
+    # Get magnitude spectrum for visualization before filtering
+    magnitude_before = magnitude_spectrum(fshift)
+    magnitude_before_norm = cv2.normalize(magnitude_before, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    
+    # Get image dimensions and center
     rows, cols = gray.shape
     crow, ccol = rows//2, cols//2
     
+    # Create mask for notch filter
     mask = np.ones((rows, cols), np.float32)
     
-    if points:
-        
+    if points and len(points) > 0:
+        # Apply notch filter at each specified point
         for x, y in points:
-            
+            # Convert normalized coordinates to pixel coordinates
             x_coord = int(ccol + (x * ccol))
-            y_coord = int(crow - (y * crow))  
+            y_coord = int(crow - (y * crow))
             
-            r = 5  
+            # Create circular mask around the point
+            r = max(5, int(min(rows, cols) * 0.02))  # Adaptive radius based on image size
             y_coords, x_coords = np.ogrid[:rows, :cols]
-            dist_from_point = np.sqrt((x_coords - x_coord)**2 + (y_coords - y_coord)**2)
-            mask[dist_from_point < r] = 0
             
+            # Create smooth transition for the notch using Gaussian
+            dist_from_point = np.sqrt((x_coords - x_coord)**2 + (y_coords - y_coord)**2)
+            mask_component = 1 - np.exp(-(dist_from_point**2)/(2 * r**2))
+            mask = mask * mask_component
+            
+            # Apply to symmetric point (for real images)
             x_sym = int(ccol - (x * ccol))
             y_sym = int(crow + (y * crow))
             dist_from_symmetric = np.sqrt((x_coords - x_sym)**2 + (y_coords - y_sym)**2)
-            mask[dist_from_symmetric < r] = 0
+            mask_component = 1 - np.exp(-(dist_from_symmetric**2)/(2 * r**2))
+            mask = mask * mask_component
     else:
-        
-        r = 5
+        # If no points specified, create a default notch at the center
+        r = max(5, int(min(rows, cols) * 0.01))
         y_coords, x_coords = np.ogrid[:rows, :cols]
         dist_from_center = np.sqrt((x_coords - ccol)**2 + (y_coords - crow)**2)
-        mask[dist_from_center < r] = 0
+        mask = 1 - np.exp(-(dist_from_center**2)/(2 * r**2))
     
-    fshift = fshift * mask
+    # Apply mask to FFT
+    fshift_filtered = fshift * mask
     
-    f_ishift = apply_ifft(fshift)
-    img_back = apply_ifft(f_ishift)
-    img_back = np.abs(img_back)
+    # Get magnitude spectrum after filtering for visualization
+    magnitude_after = magnitude_spectrum(fshift_filtered)
+    magnitude_after_norm = cv2.normalize(magnitude_after, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     
+    # Apply inverse FFT
+    f_ishift = apply_ifft(fshift_filtered)
+    img_back = np.abs(f_ishift)
+    
+    # Normalize and convert back to uint8
     img_back = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     
-
+    # Convert back to color if input was color
     if len(image.shape) == 3:
         img_back = cv2.cvtColor(img_back, cv2.COLOR_GRAY2BGR)
     
-    return img_back
+    return img_back, magnitude_before_norm, magnitude_after_norm
 
 def apply_band_reject_filter(image, cutoff_freq=30, width=10):
     

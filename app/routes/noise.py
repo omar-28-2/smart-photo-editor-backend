@@ -91,22 +91,22 @@ class AddNoise(Resource):
 @noise_ns.route('/remove')
 class RemoveNoise(Resource):
     def post(self):
-        if 'file' not in request.files:
-            return {'error': 'No file provided'}, 400
-        
-        file = request.files['file']
-        if file.filename == '':
-            return {'error': 'No file selected'}, 400
-        
-        filter_type = request.form.get('type')
-        params_str = request.form.get('params', '{}')
-        
         try:
-            params = json.loads(params_str)
-        except json.JSONDecodeError:
-            return {'error': 'Invalid parameters format'}, 400
-        
-        try:
+            if 'file' not in request.files:
+                return {'error': 'No file provided'}, 400
+            
+            file = request.files['file']
+            if file.filename == '':
+                return {'error': 'No file selected'}, 400
+            
+            filter_type = request.form.get('type')
+            params_str = request.form.get('params', '{}')
+            
+            try:
+                params = json.loads(params_str)
+            except json.JSONDecodeError:
+                return {'error': 'Invalid parameters format'}, 400
+            
             # Read the image
             img_array = np.frombuffer(file.read(), np.uint8)
             img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
@@ -118,33 +118,42 @@ class RemoveNoise(Resource):
             if filter_type == 'median':
                 kernel_size = params.get('kernel_size', 3)
                 filtered_img = apply_median_filter(img, kernel_size)
+                processed_filename = save_processed_image(filtered_img)
+                return {
+                    'message': 'Median filter applied successfully',
+                    'processed_image': processed_filename
+                }
             elif filter_type == 'notch':
                 points = params.get('points', [])
                 # Convert points to list of tuples if they exist
                 if points:
                     points = [(float(p['x']), float(p['y'])) for p in points]
-                filtered_img = apply_notch_filter(img, points)
+                filtered_img, fft_before, fft_after = apply_notch_filter(img, points)
+                
+                # Save all images
+                processed_filename = save_processed_image(filtered_img)
+                fft_before_filename = save_processed_image(fft_before, prefix='fft_before_')
+                fft_after_filename = save_processed_image(fft_after, prefix='fft_after_')
+                
+                return {
+                    'message': 'Notch filter applied successfully',
+                    'processed_image': processed_filename,
+                    'fft_before': fft_before_filename,
+                    'fft_after': fft_after_filename
+                }
             elif filter_type == 'band_reject':
                 cutoff_freq = params.get('cutoff_freq', 30)
                 width = params.get('width', 10)
                 filtered_img = apply_band_reject_filter(img, cutoff_freq, width)
+                processed_filename = save_processed_image(filtered_img)
+                return {
+                    'message': 'Band reject filter applied successfully',
+                    'processed_image': processed_filename
+                }
             else:
                 return {'error': 'Invalid filter type'}, 400
             
-            # Save the processed image using the utility function
-            processed_filename = save_processed_image(filtered_img)
-            
-            # Update the log entry
-            log_entry = ImageLog.query.filter_by(filename=file.filename).first()
-            if log_entry:
-                log_entry.processed = True
-                db.session.commit()
-            
-            return {
-                'message': 'Noise removed successfully',
-                'processed_image': processed_filename
-            }
-            
         except Exception as e:
-            print(f"Error in RemoveNoise: {str(e)}")
+            current_app.logger.error(f"Error in noise removal: {str(e)}")
+            current_app.logger.exception("Full traceback:")
             return {'error': str(e)}, 500
