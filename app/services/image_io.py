@@ -26,10 +26,16 @@ def get_image_from_request(request):
     
     return image
 
-def save_processed_image(image):
+def save_processed_image(image, prefix='processed_'):
     """
     Save a processed image with a unique filename.
-    Returns the filename of the saved image.
+    
+    Args:
+        image: The image array to save
+        prefix: Optional prefix for the filename (default: 'processed_')
+    
+    Returns:
+        The filename of the saved image
     """
     # Use the same static folder for all images
     upload_folder = os.path.join(current_app.root_path, "static", "uploads")
@@ -38,24 +44,13 @@ def save_processed_image(image):
     # Generate a unique filename using timestamp and UUID
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     unique_id = str(uuid.uuid4())[:8]
-    filename = f"processed_{timestamp}_{unique_id}.png"
+    filename = f"{prefix}{timestamp}_{unique_id}.png"
     
+    # Save the image
     filepath = os.path.join(upload_folder, filename)
+    cv2.imwrite(filepath, image)
     
-    # Ensure the image is in the correct format for saving
-    if isinstance(image, np.ndarray):
-        if len(image.shape) == 2:  # Grayscale image
-            # Convert to 3-channel grayscale if needed
-            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-        
-        success = cv2.imwrite(filepath, image)
-        if not success:
-            current_app.logger.error(f"Failed to save image to {filepath}")
-            raise IOError(f"Failed to save image to {filepath}")
-            
-        return filename
-    else:
-        raise ValueError("Invalid image format: image must be a numpy array")
+    return filename
 
 def load_image(filename):
     # Get the full path to the uploads directory
